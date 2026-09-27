@@ -1,3 +1,7 @@
+-- =================================================================
+-- CRUBY HUB V20.0 - STANDALONE UI LIBRARY MODULE (NO BLUR)
+-- =================================================================
+
 local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local CoreGui          = game:GetService("CoreGui")
@@ -84,15 +88,11 @@ function UILibrary.Init(config)
         end
     end
 
-    local blur = Lighting:FindFirstChild("CrubyBlur")
-    if not blur then
-        blur = Instance.new("BlurEffect")
-        blur.Name = "CrubyBlur"
-        blur.Size = 0
-        blur.Enabled = false
-        blur.Parent = Lighting
+    -- Xóa blur cũ nếu có
+    local oldBlur = Lighting:FindFirstChild("CrubyBlur")
+    if oldBlur then
+        oldBlur:Destroy()
     end
-    self.Blur = blur
 
     self.ScreenGui = Instance.new("ScreenGui")
     self.ScreenGui.Name = "CrubyV20_" .. math.random(1000, 9999)
@@ -156,7 +156,7 @@ function UILibrary.Init(config)
             sound:Play()
             task.delay(1, function() if sound then sound:Destroy() end end)
         end)
-        self:SetBlur(true)
+        self:SetBlur(false)
     end)
 
     self.MiniUI = Instance.new("CanvasGroup")
@@ -213,7 +213,7 @@ function UILibrary.Init(config)
     openClickArea.MouseButton1Click:Connect(function()
         AnimateUI(self.MiniUI, false)
         AnimateUI(self.MainCanvasGroup, true)
-        self:SetBlur(true)
+        self:SetBlur(false)
     end)
 
     do
@@ -424,7 +424,7 @@ function UILibrary.Init(config)
                 self:RestoreFromFloating()
             else
                 AnimateUI(self.MainCanvasGroup, true)
-                self:SetBlur(true)
+                self:SetBlur(false)
             end
         end
     end))
@@ -436,19 +436,11 @@ function UILibrary.Init(config)
     return self
 end
 
+-- Vô hiệu hóa hiệu ứng Blur hoàn toàn
 function UILibrary:SetBlur(enabled)
-    if not self.Blur then return end
-    if enabled then
-        self.Blur.Enabled = true
-        TweenService:Create(self.Blur, TWEEN_FAST, {Size = 16}):Play()
-    else
-        local tw = TweenService:Create(self.Blur, TWEEN_FAST, {Size = 0})
-        tw:Play()
-        tw.Completed:Connect(function()
-            if self.Blur and self.Blur.Size == 0 then
-                self.Blur.Enabled = false
-            end
-        end)
+    if self.Blur then
+        self.Blur.Enabled = false
+        self.Blur.Size = 0
     end
 end
 
@@ -493,9 +485,7 @@ function UILibrary:RestoreFromFloating()
     self.MainCanvasGroup.GroupTransparency = 1
     TweenService:Create(self.MainCanvasGroup, TWEEN_FAST, {GroupTransparency = 0}):Play()
 
-    if not self.IsCollapsed then
-        self:SetBlur(true)
-    end
+    self:SetBlur(false)
 end
 
 function UILibrary:ToggleCollapse()
@@ -512,7 +502,7 @@ function UILibrary:ToggleCollapse()
         self.TopTabBar.Visible = true
         self.ResizeBtn.Visible = true
         TweenService:Create(self.MainFrame, TWEEN_FAST, {Size = UDim2.new(0, self.LastExpandedSize.X, 0, self.LastExpandedSize.Y)}):Play()
-        self:SetBlur(true)
+        self:SetBlur(false)
     end
 end
 
