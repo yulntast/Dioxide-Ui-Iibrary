@@ -1,0 +1,966 @@
+-- =================================================================
+-- CRUBY HUB V20.0 - STANDALONE UI LIBRARY MODULE
+-- =================================================================
+
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+local CoreGui          = game:GetService("CoreGui")
+local Players          = game:GetService("Players")
+local Lighting         = game:GetService("Lighting")
+local SoundService     = game:GetService("SoundService")
+local TweenService     = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local CRUBY_LOGO = "rbxassetid://123216833442080"
+local INTRO_SOUND = "rbxassetid://138090596"
+local TWEEN_FAST = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local MAIN_FONT = Enum.Font.GothamBold
+
+local UILibrary = {}
+UILibrary.__index = UILibrary
+
+UILibrary.SearchIcon = "rbxassetid://72296609649861"
+UILibrary.EmptyIcon  = "rbxassetid://78338380803082"
+UILibrary.CrubyLogo  = CRUBY_LOGO
+UILibrary.DragIcon   = "rbxassetid://77028714324861"
+
+UILibrary.Icons = {
+    Combat   = "rbxassetid://121406454377051",
+    Visuals  = "rbxassetid://127234874352422",
+    Movement = "rbxassetid://80792036653047",
+    Player   = "rbxassetid://129431925610335",
+    Farming  = "rbxassetid://111300940329486",
+    Settings = "rbxassetid://106205298246017",
+    Resize   = "rbxassetid://128492050787735"
+}
+
+local function GetCamera()
+    return workspace.CurrentCamera
+end
+
+local function AnimateUI(canvasGroup, show)
+    local isMini = (canvasGroup.Name == "MiniUI")
+    local baseSize = isMini and UDim2.new(0, 110, 0, 32) or UDim2.new(0, 520, 0, 320)
+
+    canvasGroup.Size = baseSize
+
+    if show then
+        canvasGroup.Visible = true
+        canvasGroup.GroupTransparency = 1
+        TweenService:Create(canvasGroup, TWEEN_FAST, {GroupTransparency = 0}):Play()
+    else
+        local tw = TweenService:Create(canvasGroup, TWEEN_FAST, {GroupTransparency = 1})
+        tw:Play()
+        tw.Completed:Connect(function()
+            if canvasGroup and canvasGroup.Parent and canvasGroup.GroupTransparency == 1 then
+                canvasGroup.Visible = false
+            end
+        end)
+    end
+end
+
+local function GetSafeParent()
+    local success, parent = pcall(function()
+        if gethui then return gethui() end
+        return CoreGui:FindFirstChild("RobloxGui") or CoreGui
+    end)
+    return (success and parent) or LocalPlayer:WaitForChild("PlayerGui")
+end
+
+function UILibrary.Init(config)
+    config = config or {}
+    local self = setmetatable({}, UILibrary)
+
+    self.Connections = {}
+    self.AccentColor = config.AccentColor or Color3.fromRGB(75, 115, 245)
+    self.ToggleKey = config.ToggleKey or Enum.KeyCode.RightControl
+    self.TitleText = config.Title or "CRUBY"
+    self.IsResizing = false
+    self.IsCollapsed = false
+    self.LastExpandedSize = Vector2.new(520, 320)
+
+    local parentTarget = GetSafeParent()
+
+    for _, oldGui in pairs(parentTarget:GetChildren()) do
+        if oldGui.Name:sub(1, 9) == "CrubyV20_" then
+            oldGui:Destroy()
+        end
+    end
+
+    local blur = Lighting:FindFirstChild("CrubyBlur")
+    if not blur then
+        blur = Instance.new("BlurEffect")
+        blur.Name = "CrubyBlur"
+        blur.Size = 0
+        blur.Enabled = false
+        blur.Parent = Lighting
+    end
+    self.Blur = blur
+
+    self.ScreenGui = Instance.new("ScreenGui")
+    self.ScreenGui.Name = "CrubyV20_" .. math.random(1000, 9999)
+    self.ScreenGui.ResetOnSpawn = false
+    self.ScreenGui.DisplayOrder = 999
+    self.ScreenGui.IgnoreGuiInset = true
+    self.ScreenGui.Parent = parentTarget
+
+    self.NotifContainer = Instance.new("Frame")
+    self.NotifContainer.Size = UDim2.new(0, 220, 1, -20)
+    self.NotifContainer.Position = UDim2.new(1, -230, 0, 10)
+    self.NotifContainer.BackgroundTransparency = 1
+    self.NotifContainer.ClipsDescendants = true
+    self.NotifContainer.Parent = self.ScreenGui
+
+    local notifLayout = Instance.new("UIListLayout")
+    notifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+    notifLayout.Padding = UDim.new(0, 8)
+    notifLayout.Parent = self.NotifContainer
+
+    self.MainCanvasGroup = Instance.new("CanvasGroup")
+    self.MainCanvasGroup.Name = "MainCanvasGroup"
+    self.MainCanvasGroup.Size = UDim2.new(0, 520, 0, 320)
+    self.MainCanvasGroup.Position = UDim2.new(0.5, -260, 0.5, -160)
+    self.MainCanvasGroup.BackgroundColor3 = Color3.fromRGB(16, 17, 22)
+    self.MainCanvasGroup.BackgroundTransparency = 0.05
+    self.MainCanvasGroup.GroupTransparency = 0
+    self.MainCanvasGroup.ClipsDescendants = true
+    self.MainCanvasGroup.Parent = self.ScreenGui
+
+    self.MainFrame = self.MainCanvasGroup
+    self.TargetDragPos = self.MainFrame.Position
+
+    Instance.new("UICorner", self.MainFrame).CornerRadius = UDim.new(0, 8)
+
+    self.MainStroke = Instance.new("UIStroke")
+    self.MainStroke.Color = Color3.fromRGB(45, 48, 62)
+    self.MainStroke.Thickness = 1
+    self.MainStroke.Parent = self.MainFrame
+
+    self.ToggleFloatBtn = Instance.new("ImageButton")
+    self.ToggleFloatBtn.Name = "CrubyFloatingLogo"
+    self.ToggleFloatBtn.Image = CRUBY_LOGO
+    self.ToggleFloatBtn.Size = UDim2.new(0, 38, 0, 38)
+    self.ToggleFloatBtn.Position = UDim2.new(0, 20, 0, 40)
+    self.ToggleFloatBtn.BackgroundColor3 = Color3.fromRGB(14, 16, 20)
+    self.ToggleFloatBtn.BorderSizePixel = 1
+    self.ToggleFloatBtn.BorderColor3 = Color3.fromRGB(40, 44, 54)
+    self.ToggleFloatBtn.Visible = false
+    self.ToggleFloatBtn.ZIndex = 300
+    self.ToggleFloatBtn.Parent = self.ScreenGui
+
+    Instance.new("UICorner", self.ToggleFloatBtn).CornerRadius = UDim.new(1, 0)
+
+    task.spawn(function()
+        pcall(function()
+            local sound = Instance.new("Sound")
+            sound.SoundId = INTRO_SOUND
+            sound.Volume = 1
+            sound.Parent = SoundService
+            sound:Play()
+            task.delay(1, function() if sound then sound:Destroy() end end)
+        end)
+        self:SetBlur(true)
+    end)
+
+    self.MiniUI = Instance.new("CanvasGroup")
+    self.MiniUI.Name = "MiniUI"
+    self.MiniUI.Size = UDim2.new(0, 110, 0, 32)
+    self.MiniUI.Position = UDim2.new(0.02, 0, 0.05, 0)
+    self.MiniUI.BackgroundColor3 = Color3.fromRGB(16, 17, 22)
+    self.MiniUI.GroupTransparency = 1
+    self.MiniUI.Visible = false
+    self.MiniUI.ClipsDescendants = true
+    self.MiniUI.Parent = self.ScreenGui
+
+    Instance.new("UICorner", self.MiniUI).CornerRadius = UDim.new(0, 8)
+
+    local miniStroke = Instance.new("UIStroke")
+    miniStroke.Color = Color3.fromRGB(45, 48, 62)
+    miniStroke.Parent = self.MiniUI
+
+    local dragBtn = Instance.new("ImageButton")
+    dragBtn.Size = UDim2.new(0, 14, 0, 14)
+    dragBtn.Position = UDim2.new(0, 8, 0.5, -7)
+    dragBtn.BackgroundTransparency = 1
+    dragBtn.Image = UILibrary.DragIcon
+    dragBtn.ImageColor3 = Color3.fromRGB(150, 155, 170)
+    dragBtn.ZIndex = 5
+    dragBtn.Parent = self.MiniUI
+
+    local logoImg = Instance.new("ImageLabel")
+    logoImg.Size = UDim2.new(0, 18, 0, 18)
+    logoImg.Position = UDim2.new(0, 36, 0.5, -9)
+    logoImg.BackgroundTransparency = 1
+    logoImg.Image = UILibrary.CrubyLogo
+    logoImg.Parent = self.MiniUI
+
+    local miniTitle = Instance.new("TextLabel")
+    miniTitle.Size = UDim2.new(0, 48, 1, 0)
+    miniTitle.Position = UDim2.new(0, 58, 0, 0)
+    miniTitle.BackgroundTransparency = 1
+    miniTitle.Text = self.TitleText
+    miniTitle.TextColor3 = Color3.fromRGB(220, 225, 240)
+    miniTitle.Font = MAIN_FONT
+    miniTitle.TextSize = 10
+    miniTitle.TextXAlignment = Enum.TextXAlignment.Left
+    miniTitle.Parent = self.MiniUI
+
+    local openClickArea = Instance.new("TextButton")
+    openClickArea.Size = UDim2.new(1, -29, 1, 0)
+    openClickArea.Position = UDim2.new(0, 29, 0, 0)
+    openClickArea.BackgroundTransparency = 1
+    openClickArea.Text = ""
+    openClickArea.ZIndex = 10
+    openClickArea.Parent = self.MiniUI
+
+    openClickArea.MouseButton1Click:Connect(function()
+        AnimateUI(self.MiniUI, false)
+        AnimateUI(self.MainCanvasGroup, true)
+        self:SetBlur(true)
+    end)
+
+    do
+        local dragInput, mouseStart, frameStart
+        local isDragging = false
+
+        self.ToggleFloatBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                isDragging = false
+                mouseStart = input.Position
+                frameStart = self.ToggleFloatBtn.Position
+            end
+        end)
+
+        table.insert(self.Connections, UserInputService.InputEnded:Connect(function(input)
+            if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and mouseStart then
+                if not isDragging then
+                    self:RestoreFromFloating()
+                end
+                mouseStart = nil
+            end
+        end))
+
+        self.ToggleFloatBtn.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                dragInput = input
+            end
+        end)
+
+        table.insert(self.Connections, UserInputService.InputChanged:Connect(function(input)
+            if input == dragInput and mouseStart then
+                local delta = input.Position - mouseStart
+                if delta.Magnitude > 5 then
+                    isDragging = true
+                end
+
+                if isDragging then
+                    local vp = GetCamera().ViewportSize
+                    local newX = math.clamp(frameStart.X.Offset + delta.X, 10, vp.X - 50)
+                    local newY = math.clamp(frameStart.Y.Offset + delta.Y, 10, vp.Y - 50)
+                    self.ToggleFloatBtn.Position = UDim2.new(0, newX, 0, newY)
+                end
+            end
+        end))
+    end
+
+    local sidePanel = Instance.new("Frame")
+    sidePanel.Size = UDim2.new(0, 28, 1, 0)
+    sidePanel.BackgroundTransparency = 1
+    sidePanel.Parent = self.MainFrame
+
+    local btnContainer = Instance.new("Frame")
+    btnContainer.Size = UDim2.new(1, 0, 0, 110)
+    btnContainer.Position = UDim2.new(0, 0, 0, 12)
+    btnContainer.BackgroundTransparency = 1
+    btnContainer.Parent = sidePanel
+
+    local btnLayout = Instance.new("UIListLayout")
+    btnLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    btnLayout.Padding = UDim.new(0, 10)
+    btnLayout.Parent = btnContainer
+
+    local function CreateControlBtn(color, action)
+        local btnHitbox = Instance.new("TextButton")
+        btnHitbox.Size = UDim2.new(0, 16, 0, 16)
+        btnHitbox.BackgroundTransparency = 1
+        btnHitbox.Text = ""
+        btnHitbox.Parent = btnContainer
+
+        local dotVisual = Instance.new("Frame")
+        dotVisual.Size = UDim2.new(0, 9, 0, 9)
+        dotVisual.Position = UDim2.new(0.5, -4.5, 0.5, -4.5)
+        dotVisual.BackgroundColor3 = color
+        dotVisual.Parent = btnHitbox
+
+        Instance.new("UICorner", dotVisual).CornerRadius = UDim.new(1, 0)
+        btnHitbox.MouseButton1Click:Connect(action)
+    end
+
+    CreateControlBtn(Color3.fromRGB(255, 75, 85), function() self:Destroy() end)
+    CreateControlBtn(Color3.fromRGB(255, 185, 45), function() self:HideToFloating() end)
+    CreateControlBtn(Color3.fromRGB(50, 205, 95), function()
+        self.TargetDragPos = UDim2.new(0.5, -self.MainFrame.AbsoluteSize.X / 2, 0.5, -self.MainFrame.AbsoluteSize.Y / 2)
+    end)
+
+    self.TopTabBar = Instance.new("Frame")
+    self.TopTabBar.Size = UDim2.new(1, -45, 0, 34)
+    self.TopTabBar.Position = UDim2.new(0, 30, 0, 12)
+    self.TopTabBar.BackgroundColor3 = Color3.fromRGB(26, 28, 38)
+    self.TopTabBar.BackgroundTransparency = 0.55
+    self.TopTabBar.ClipsDescendants = true
+    self.TopTabBar.Parent = self.MainFrame
+
+    Instance.new("UICorner", self.TopTabBar).CornerRadius = UDim.new(0, 5)
+
+    self.TabContainer = Instance.new("ScrollingFrame")
+    self.TabContainer.Size = UDim2.new(1, -120, 1, 0)
+    self.TabContainer.BackgroundTransparency = 1
+    self.TabContainer.ScrollBarThickness = 0
+    self.TabContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
+    self.TabContainer.AutomaticCanvasSize = Enum.AutomaticSize.X
+    self.TabContainer.ClipsDescendants = true
+    self.TabContainer.Parent = self.TopTabBar
+
+    local tabLayout = Instance.new("UIListLayout")
+    tabLayout.FillDirection = Enum.FillDirection.Horizontal
+    tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    tabLayout.Padding = UDim.new(0, 10)
+    tabLayout.Parent = self.TabContainer
+
+    local tabPadding = Instance.new("UIPadding")
+    tabPadding.PaddingLeft = UDim.new(0, 10)
+    tabPadding.PaddingRight = UDim.new(0, 10)
+    tabPadding.Parent = self.TabContainer
+
+    local searchContainer = Instance.new("Frame")
+    searchContainer.Size = UDim2.new(0, 22, 0, 22)
+    searchContainer.Position = UDim2.new(1, -8, 0.5, -11)
+    searchContainer.AnchorPoint = Vector2.new(1, 0)
+    searchContainer.BackgroundTransparency = 1
+    searchContainer.ClipsDescendants = true
+    searchContainer.Parent = self.TopTabBar
+
+    local searchBtn = Instance.new("ImageButton")
+    searchBtn.Size = UDim2.new(0, 14, 0, 14)
+    searchBtn.Position = UDim2.new(1, -18, 0.5, -7)
+    searchBtn.BackgroundTransparency = 1
+    searchBtn.Image = UILibrary.SearchIcon
+    searchBtn.ImageColor3 = Color3.fromRGB(150, 155, 170)
+    searchBtn.Parent = searchContainer
+
+    local searchBox = Instance.new("TextBox")
+    searchBox.Size = UDim2.new(1, -26, 1, 0)
+    searchBox.Position = UDim2.new(0, 4, 0, 0)
+    searchBox.BackgroundTransparency = 1
+    searchBox.PlaceholderText = "Search..."
+    searchBox.Text = ""
+    searchBox.TextColor3 = Color3.fromRGB(235, 240, 250)
+    searchBox.Font = MAIN_FONT
+    searchBox.TextSize = 10
+    searchBox.TextXAlignment = Enum.TextXAlignment.Left
+    searchBox.Visible = false
+    searchBox.ClipsDescendants = true
+    searchBox.Parent = searchContainer
+
+    local searchExpanded = false
+
+    local function ExpandSearch()
+        searchExpanded = true
+        searchBox.Visible = true
+        TweenService:Create(searchContainer, TWEEN_FAST, {Size = UDim2.new(0, 110, 0, 22)}):Play()
+        searchBox:CaptureFocus()
+    end
+
+    local function CollapseSearch()
+        if searchBox.Text == "" then
+            searchExpanded = false
+            local tw = TweenService:Create(searchContainer, TWEEN_FAST, {Size = UDim2.new(0, 22, 0, 22)})
+            tw:Play()
+            tw.Completed:Connect(function()
+                if not searchExpanded then searchBox.Visible = false end
+            end)
+        end
+    end
+
+    searchBtn.MouseButton1Click:Connect(function()
+        if not searchExpanded then ExpandSearch() else searchBox:ReleaseFocus() end
+    end)
+
+    searchBox.FocusLost:Connect(CollapseSearch)
+
+    searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+        local query = searchBox.Text:lower()
+        if self.ActiveTab then
+            for _, item in pairs(self.ActiveTab.ScrollFrame:GetChildren()) do
+                if item:IsA("Frame") or item:IsA("TextButton") then
+                    local txtLabel = item:FindFirstChildOfClass("TextLabel") or (item:IsA("TextButton") and item)
+                    if txtLabel and txtLabel.Text ~= "" then
+                        item.Visible = query == "" or txtLabel.Text:lower():find(query, 1, true) ~= nil
+                    end
+                end
+            end
+        end
+    end)
+
+    self.ContentContainer = Instance.new("Frame")
+    self.ContentContainer.Size = UDim2.new(1, -45, 1, -64)
+    self.ContentContainer.Position = UDim2.new(0, 30, 0, 52)
+    self.ContentContainer.BackgroundTransparency = 1
+    self.ContentContainer.ClipsDescendants = true
+    self.ContentContainer.Parent = self.MainFrame
+
+    self.ResizeBtn = Instance.new("ImageButton")
+    self.ResizeBtn.Size = UDim2.new(0, 14, 0, 14)
+    self.ResizeBtn.Position = UDim2.new(1, -18, 1, -18)
+    self.ResizeBtn.BackgroundTransparency = 1
+    self.ResizeBtn.Image = UILibrary.Icons.Resize
+    self.ResizeBtn.ImageColor3 = Color3.fromRGB(180, 185, 200)
+    self.ResizeBtn.ZIndex = 25
+    self.ResizeBtn.Parent = self.MainFrame
+
+    table.insert(self.Connections, UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if input.KeyCode == self.ToggleKey then
+            if self.MainCanvasGroup.Visible then
+                self:HideToFloating()
+            elseif self.ToggleFloatBtn.Visible then
+                self:RestoreFromFloating()
+            else
+                AnimateUI(self.MainCanvasGroup, true)
+                self:SetBlur(true)
+            end
+        end
+    end))
+
+    self:EnableSmoothDrag()
+    self:EnableResize()
+    self.Tabs = {}
+
+    return self
+end
+
+function UILibrary:SetBlur(enabled)
+    if not self.Blur then return end
+    if enabled then
+        self.Blur.Enabled = true
+        TweenService:Create(self.Blur, TWEEN_FAST, {Size = 16}):Play()
+    else
+        local tw = TweenService:Create(self.Blur, TWEEN_FAST, {Size = 0})
+        tw:Play()
+        tw.Completed:Connect(function()
+            if self.Blur and self.Blur.Size == 0 then
+                self.Blur.Enabled = false
+            end
+        end)
+    end
+end
+
+function UILibrary:Destroy()
+    self:SetBlur(false)
+    for _, conn in pairs(self.Connections) do
+        if conn and conn.Connected then
+            conn:Disconnect()
+        end
+    end
+    table.clear(self.Connections)
+
+    if self.ScreenGui then self.ScreenGui:Destroy() end
+end
+
+function UILibrary:HideToFloating()
+    self:SetBlur(false)
+    local tWin = TweenService:Create(self.MainCanvasGroup, TWEEN_FAST, {GroupTransparency = 1})
+    tWin:Play()
+    tWin.Completed:Connect(function()
+        if self.MainCanvasGroup and self.MainCanvasGroup.Parent and self.MainCanvasGroup.GroupTransparency == 1 then
+            self.MainCanvasGroup.Visible = false
+        end
+    end)
+
+    self.ToggleFloatBtn.Visible = true
+    self.ToggleFloatBtn.ImageTransparency = 1
+    self.ToggleFloatBtn.BackgroundTransparency = 1
+    TweenService:Create(self.ToggleFloatBtn, TWEEN_FAST, {ImageTransparency = 0, BackgroundTransparency = 0}):Play()
+end
+
+function UILibrary:RestoreFromFloating()
+    local tLogo = TweenService:Create(self.ToggleFloatBtn, TWEEN_FAST, {ImageTransparency = 1, BackgroundTransparency = 1})
+    tLogo:Play()
+    tLogo.Completed:Connect(function()
+        if self.ToggleFloatBtn and self.ToggleFloatBtn.Parent and self.ToggleFloatBtn.ImageTransparency == 1 then
+            self.ToggleFloatBtn.Visible = false
+        end
+    end)
+
+    self.MainCanvasGroup.Visible = true
+    self.MainCanvasGroup.GroupTransparency = 1
+    TweenService:Create(self.MainCanvasGroup, TWEEN_FAST, {GroupTransparency = 0}):Play()
+
+    if not self.IsCollapsed then
+        self:SetBlur(true)
+    end
+end
+
+function UILibrary:ToggleCollapse()
+    self.IsCollapsed = not self.IsCollapsed
+    if self.IsCollapsed then
+        self.LastExpandedSize = Vector2.new(self.MainFrame.AbsoluteSize.X, self.MainFrame.AbsoluteSize.Y)
+        self:SetBlur(false)
+        TweenService:Create(self.MainFrame, TWEEN_FAST, {Size = UDim2.new(0, self.MainFrame.AbsoluteSize.X, 0, 32)}):Play()
+        self.ContentContainer.Visible = false
+        self.TopTabBar.Visible = false
+        self.ResizeBtn.Visible = false
+    else
+        self.ContentContainer.Visible = true
+        self.TopTabBar.Visible = true
+        self.ResizeBtn.Visible = true
+        TweenService:Create(self.MainFrame, TWEEN_FAST, {Size = UDim2.new(0, self.LastExpandedSize.X, 0, self.LastExpandedSize.Y)}):Play()
+        self:SetBlur(true)
+    end
+end
+
+function UILibrary:EnableSmoothDrag()
+    local dragging = false
+    local dragStart = Vector3.new()
+    local startPos = UDim2.new()
+
+    self.MainFrame.InputBegan:Connect(function(input)
+        if self.IsResizing then return end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = self.MainFrame.Position
+        end
+    end)
+
+    table.insert(self.Connections, UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end))
+
+    table.insert(self.Connections, UserInputService.InputChanged:Connect(function(input)
+        if dragging and not self.IsResizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            self.TargetDragPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end))
+
+    table.insert(self.Connections, RunService.RenderStepped:Connect(function()
+        if self.TargetDragPos and self.MainFrame and self.MainFrame.Parent then
+            local curr = self.MainFrame.Position
+            local targ = self.TargetDragPos
+            local diffX = math.abs(curr.X.Offset - targ.X.Offset)
+            local diffY = math.abs(curr.Y.Offset - targ.Y.Offset)
+
+            if dragging or diffX > 0.1 or diffY > 0.1 then
+                self.MainFrame.Position = curr:Lerp(targ, 0.22)
+            else
+                self.MainFrame.Position = targ
+            end
+        end
+    end))
+end
+
+function UILibrary:EnableResize()
+    local resizeStart, startSize
+
+    self.ResizeBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            self.IsResizing = true
+            resizeStart = input.Position
+            startSize = self.MainFrame.Size
+        end
+    end)
+
+    table.insert(self.Connections, UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            self.IsResizing = false
+        end
+    end))
+
+    table.insert(self.Connections, UserInputService.InputChanged:Connect(function(input)
+        if self.IsResizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - resizeStart
+            self.MainFrame.Size = UDim2.new(0, math.max(420, startSize.X.Offset + delta.X), 0, math.max(240, startSize.Y.Offset + delta.Y))
+        end
+    end))
+end
+
+function UILibrary:Notify(title, text, duration)
+    duration = duration or 2
+
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, 0, 0, 48)
+    card.BackgroundColor3 = Color3.fromRGB(22, 24, 32)
+    card.BackgroundTransparency = 1
+    card.ClipsDescendants = true
+    card.Parent = self.NotifContainer
+
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 6)
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = self.AccentColor
+    stroke.Thickness = 1
+    stroke.Transparency = 1
+    stroke.Parent = card
+
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Size = UDim2.new(1, -16, 0, 18)
+    titleLbl.Position = UDim2.new(0, 10, 0, 6)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = title
+    titleLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleLbl.TextTransparency = 1
+    titleLbl.Font = MAIN_FONT
+    titleLbl.TextSize = 11
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    titleLbl.Parent = card
+
+    local descLbl = Instance.new("TextLabel")
+    descLbl.Size = UDim2.new(1, -16, 0, 18)
+    descLbl.Position = UDim2.new(0, 10, 0, 24)
+    descLbl.BackgroundTransparency = 1
+    descLbl.Text = text
+    descLbl.TextColor3 = Color3.fromRGB(160, 165, 180)
+    descLbl.TextTransparency = 1
+    descLbl.Font = MAIN_FONT
+    descLbl.TextSize = 10
+    descLbl.TextXAlignment = Enum.TextXAlignment.Left
+    descLbl.TextTruncate = Enum.TextTruncate.AtEnd
+    descLbl.Parent = card
+
+    TweenService:Create(card, TWEEN_FAST, {BackgroundTransparency = 0.1}):Play()
+    TweenService:Create(stroke, TWEEN_FAST, {Transparency = 0}):Play()
+    TweenService:Create(titleLbl, TWEEN_FAST, {TextTransparency = 0}):Play()
+    TweenService:Create(descLbl, TWEEN_FAST, {TextTransparency = 0}):Play()
+
+    task.delay(duration, function()
+        if card and card.Parent then
+            local tw = TweenService:Create(card, TWEEN_FAST, {BackgroundTransparency = 1})
+            TweenService:Create(stroke, TWEEN_FAST, {Transparency = 1}):Play()
+            TweenService:Create(titleLbl, TWEEN_FAST, {TextTransparency = 1}):Play()
+            TweenService:Create(descLbl, TWEEN_FAST, {TextTransparency = 1}):Play()
+            tw:Play()
+            tw.Completed:Connect(function()
+                if card then card:Destroy() end
+            end)
+        end
+    end)
+end
+
+function UILibrary:CreateTab(iconAssetId)
+    local tabObj = {}
+    local library = self
+
+    local tabBtn = Instance.new("TextButton")
+    tabBtn.Size = UDim2.new(0, 30, 0, 22)
+    tabBtn.BackgroundColor3 = library.AccentColor
+    tabBtn.BackgroundTransparency = 1
+    tabBtn.Text = ""
+    tabBtn.ClipsDescendants = true
+    tabBtn.Parent = self.TabContainer
+
+    Instance.new("UICorner", tabBtn).CornerRadius = UDim.new(0, 3)
+
+    local icon = Instance.new("ImageLabel")
+    icon.Size = UDim2.new(0, 15, 0, 15)
+    icon.Position = UDim2.new(0.5, -7, 0.5, -7)
+    icon.BackgroundTransparency = 1
+    icon.Image = iconAssetId
+    icon.ImageColor3 = Color3.fromRGB(120, 125, 140)
+    icon.Parent = tabBtn
+
+    local pageGroup = Instance.new("Frame")
+    pageGroup.Size = UDim2.new(1, 0, 1, 0)
+    pageGroup.BackgroundTransparency = 1
+    pageGroup.Visible = false
+    pageGroup.ClipsDescendants = true
+    pageGroup.Parent = self.ContentContainer
+
+    local pageScroll = Instance.new("ScrollingFrame")
+    pageScroll.Size = UDim2.new(1, 0, 1, 0)
+    pageScroll.BackgroundTransparency = 1
+    pageScroll.ScrollBarThickness = 0
+    pageScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    pageScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    pageScroll.ClipsDescendants = true
+    pageScroll.Parent = pageGroup
+
+    local pagePadding = Instance.new("UIPadding")
+    pagePadding.PaddingTop = UDim.new(0, 2)
+    pagePadding.PaddingBottom = UDim.new(0, 20)
+    pagePadding.PaddingLeft = UDim.new(0, 2)
+    pagePadding.PaddingRight = UDim.new(0, 6)
+    pagePadding.Parent = pageScroll
+
+    local pageLayout = Instance.new("UIListLayout")
+    pageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    pageLayout.Padding = UDim.new(0, 8)
+    pageLayout.Parent = pageScroll
+
+    tabBtn.MouseButton1Click:Connect(function()
+        if self.ActiveTab == tabObj then return end
+
+        if self.ActiveTab then
+            local oldTab = self.ActiveTab
+            TweenService:Create(oldTab.TabButton, TWEEN_FAST, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(oldTab.Icon, TWEEN_FAST, {ImageColor3 = Color3.fromRGB(120, 125, 140)}):Play()
+            oldTab.PageGroup.Visible = false
+        end
+
+        self.ActiveTab = tabObj
+        pageGroup.Visible = true
+
+        TweenService:Create(tabBtn, TWEEN_FAST, {BackgroundTransparency = 0, BackgroundColor3 = library.AccentColor}):Play()
+        TweenService:Create(icon, TWEEN_FAST, {ImageColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+    end)
+
+    if #self.Tabs == 0 then
+        pageGroup.Visible = true
+        self.ActiveTab = tabObj
+        tabBtn.BackgroundTransparency = 0
+        tabBtn.BackgroundColor3 = library.AccentColor
+        icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+    end
+
+    tabObj.TabButton = tabBtn
+    tabObj.Icon = icon
+    tabObj.PageGroup = pageGroup
+    tabObj.ScrollFrame = pageScroll
+
+    function tabObj:AddSection(title)
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, 0, 0, 18)
+        label.BackgroundTransparency = 1
+        label.Text = string.upper(title)
+        label.TextColor3 = Color3.fromRGB(110, 115, 130)
+        label.Font = MAIN_FONT
+        label.TextSize = 10
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextTruncate = Enum.TextTruncate.AtEnd
+        label.Parent = pageScroll
+    end
+
+    function tabObj:AddToggle(text, default, callback)
+        local state = default or false
+
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 22)
+        btn.BackgroundTransparency = 1
+        btn.Text = ""
+        btn.ClipsDescendants = true
+        btn.Parent = pageScroll
+
+        local box = Instance.new("Frame")
+        box.Size = UDim2.new(0, 14, 0, 14)
+        box.Position = UDim2.new(0, 2, 0.5, -7)
+        box.BackgroundColor3 = state and library.AccentColor or Color3.fromRGB(28, 30, 38)
+        box.Parent = btn
+
+        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 2)
+
+        local boxStroke = Instance.new("UIStroke")
+        boxStroke.Color = state and library.AccentColor or Color3.fromRGB(50, 52, 65)
+        boxStroke.Parent = box
+
+        local txt = Instance.new("TextLabel")
+        txt.Size = UDim2.new(1, -25, 1, 0)
+        txt.Position = UDim2.new(0, 24, 0, 0)
+        txt.BackgroundTransparency = 1
+        txt.Text = text
+        txt.TextColor3 = state and Color3.fromRGB(240, 245, 255) or Color3.fromRGB(160, 165, 180)
+        txt.Font = MAIN_FONT
+        txt.TextSize = 11
+        txt.TextXAlignment = Enum.TextXAlignment.Left
+        txt.TextTruncate = Enum.TextTruncate.AtEnd
+        txt.Parent = btn
+
+        btn.MouseButton1Click:Connect(function()
+            state = not state
+            local targetBg = state and library.AccentColor or Color3.fromRGB(28, 30, 38)
+            local targetStr = state and library.AccentColor or Color3.fromRGB(50, 52, 65)
+            local targetTxt = state and Color3.fromRGB(240, 245, 255) or Color3.fromRGB(160, 165, 180)
+
+            TweenService:Create(box, TWEEN_FAST, {BackgroundColor3 = targetBg}):Play()
+            TweenService:Create(boxStroke, TWEEN_FAST, {Color = targetStr}):Play()
+            TweenService:Create(txt, TWEEN_FAST, {TextColor3 = targetTxt}):Play()
+
+            if callback then callback(state) end
+        end)
+
+        if default and callback then callback(true) end
+    end
+
+    function tabObj:AddSlider(text, min, max, default, callback)
+        local value = default or min
+        local dragging = false
+
+        local sliderFrame = Instance.new("TextButton")
+        sliderFrame.Size = UDim2.new(1, 0, 0, 36)
+        sliderFrame.BackgroundTransparency = 1
+        sliderFrame.Text = ""
+        sliderFrame.ClipsDescendants = true
+        sliderFrame.Parent = pageScroll
+
+        local txt = Instance.new("TextLabel")
+        txt.Size = UDim2.new(0.7, 0, 0, 16)
+        txt.BackgroundTransparency = 1
+        txt.Text = text
+        txt.TextColor3 = Color3.fromRGB(200, 205, 220)
+        txt.Font = MAIN_FONT
+        txt.TextSize = 11
+        txt.TextXAlignment = Enum.TextXAlignment.Left
+        txt.TextTruncate = Enum.TextTruncate.AtEnd
+        txt.Parent = sliderFrame
+
+        local valLabel = Instance.new("TextLabel")
+        valLabel.Size = UDim2.new(0.3, 0, 0, 16)
+        valLabel.Position = UDim2.new(0.7, 0, 0, 0)
+        valLabel.BackgroundTransparency = 1
+        valLabel.Text = tostring(value)
+        valLabel.TextColor3 = Color3.fromRGB(140, 145, 160)
+        valLabel.Font = MAIN_FONT
+        valLabel.TextSize = 10
+        valLabel.TextXAlignment = Enum.TextXAlignment.Right
+        valLabel.Parent = sliderFrame
+
+        local barBg = Instance.new("Frame")
+        barBg.Size = UDim2.new(1, 0, 0, 6)
+        barBg.Position = UDim2.new(0, 0, 0, 22)
+        barBg.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+        barBg.Parent = sliderFrame
+
+        Instance.new("UICorner", barBg).CornerRadius = UDim.new(0, 2)
+
+        local fill = Instance.new("Frame")
+        fill.Size = UDim2.new(math.clamp((value - min) / math.max(1, max - min), 0, 1), 0, 1, 0)
+        fill.BackgroundColor3 = library.AccentColor
+        fill.Parent = barBg
+
+        Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 2)
+
+        local function Update(input)
+            local width = math.max(1, barBg.AbsoluteSize.X)
+            local pos = math.clamp((input.Position.X - barBg.AbsolutePosition.X) / width, 0, 1)
+            value = math.floor(min + ((max - min) * pos))
+            valLabel.Text = tostring(value)
+            TweenService:Create(fill, TWEEN_FAST, {Size = UDim2.new(pos, 0, 1, 0)}):Play()
+            if callback then callback(value) end
+        end
+
+        sliderFrame.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                Update(input)
+            end
+        end)
+
+        table.insert(library.Connections, UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+            end
+        end))
+
+        table.insert(library.Connections, UserInputService.InputChanged:Connect(function(input)
+            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                Update(input)
+            end
+        end))
+    end
+
+    function tabObj:AddButton(text, callback)
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 24)
+        btn.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+        btn.Text = text
+        btn.TextColor3 = Color3.fromRGB(200, 205, 220)
+        btn.Font = MAIN_FONT
+        btn.TextSize = 11
+        btn.TextTruncate = Enum.TextTruncate.AtEnd
+        btn.ClipsDescendants = true
+        btn.Parent = pageScroll
+
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 3)
+
+        local btnStroke = Instance.new("UIStroke")
+        btnStroke.Color = Color3.fromRGB(50, 52, 65)
+        btnStroke.Parent = btn
+
+        btn.MouseButton1Click:Connect(function()
+            if callback then callback() end
+        end)
+    end
+
+    function tabObj:AddDropdown(text, list, default, callback)
+        local open = false
+        local selected = default or list[1] or "None"
+
+        local dropFrame = Instance.new("Frame")
+        dropFrame.Size = UDim2.new(1, 0, 0, 26)
+        dropFrame.BackgroundColor3 = Color3.fromRGB(28, 30, 38)
+        dropFrame.ClipsDescendants = true
+        dropFrame.Parent = pageScroll
+
+        Instance.new("UICorner", dropFrame).CornerRadius = UDim.new(0, 3)
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(50, 52, 65)
+        stroke.Parent = dropFrame
+
+        local mainBtn = Instance.new("TextButton")
+        mainBtn.Size = UDim2.new(1, 0, 0, 26)
+        mainBtn.BackgroundTransparency = 1
+        mainBtn.Text = "  " .. text .. ": " .. tostring(selected)
+        mainBtn.TextColor3 = Color3.fromRGB(200, 205, 220)
+        mainBtn.Font = MAIN_FONT
+        mainBtn.TextSize = 11
+        mainBtn.TextXAlignment = Enum.TextXAlignment.Left
+        mainBtn.TextTruncate = Enum.TextTruncate.AtEnd
+        mainBtn.Parent = dropFrame
+
+        local listContainer = Instance.new("Frame")
+        listContainer.Size = UDim2.new(1, 0, 0, #list * 20)
+        listContainer.Position = UDim2.new(0, 0, 0, 26)
+        listContainer.BackgroundTransparency = 1
+        listContainer.ClipsDescendants = true
+        listContainer.Parent = dropFrame
+
+        local listLayout = Instance.new("UIListLayout")
+        listLayout.Parent = listContainer
+
+        for _, item in ipairs(list) do
+            local itemBtn = Instance.new("TextButton")
+            itemBtn.Size = UDim2.new(1, 0, 0, 20)
+            itemBtn.BackgroundTransparency = 1
+            itemBtn.Text = "    " .. tostring(item)
+            itemBtn.TextColor3 = Color3.fromRGB(150, 155, 170)
+            itemBtn.Font = MAIN_FONT
+            itemBtn.TextSize = 10
+            itemBtn.TextXAlignment = Enum.TextXAlignment.Left
+            itemBtn.TextTruncate = Enum.TextTruncate.AtEnd
+            itemBtn.Parent = listContainer
+
+            itemBtn.MouseButton1Click:Connect(function()
+                selected = item
+                mainBtn.Text = "  " .. text .. ": " .. tostring(selected)
+                open = false
+                TweenService:Create(dropFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, 26)}):Play()
+                if callback then callback(selected) end
+            end)
+        end
+
+        mainBtn.MouseButton1Click:Connect(function()
+            open = not open
+            local targetH = open and (26 + (#list * 20)) or 26
+            TweenService:Create(dropFrame, TWEEN_FAST, {Size = UDim2.new(1, 0, 0, targetH)}):Play()
+        end)
+    end
+
+    table.insert(self.Tabs, tabObj)
+    return tabObj
+end
+
+return UILibrary
