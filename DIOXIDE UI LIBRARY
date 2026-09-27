@@ -1,7 +1,3 @@
--- =================================================================
--- CRUBY HUB V20.0 - STANDALONE UI LIBRARY MODULE
--- =================================================================
-
 local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local CoreGui          = game:GetService("CoreGui")
