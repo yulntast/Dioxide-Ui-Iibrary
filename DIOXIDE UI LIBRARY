@@ -36,8 +36,8 @@ local OFF = Color3.fromRGB(80, 25, 30)
 local DARK = Color3.fromRGB(16, 18, 26)
 
 local LOGO_ID = "rbxassetid://72460562573080"
-local DISCORD_LOGO_ID = "rbxassetid://0"
-local DISCORD_INVITE = "discord.gg/yourserver"
+local DISCORD_LOGO_ID = "rbxassetid://18505728201"
+local DISCORD_INVITE = "discord.gg/https://discord.gg/2ZxyVYKfR"
 
 local K = 1.5
 local BASE_W, BASE_H = 528, 524
